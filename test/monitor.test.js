@@ -3,13 +3,14 @@ import assert from 'node:assert/strict';
 import { createMonitorState, processOneTick } from '../src/monitor.js';
 import { DEFAULT_CONFIG } from '../src/config.js';
 
-function mockTmux(paneContent = '', paneCommand = 'node', claudeForeground = true) {
+function mockTmux(paneContent = '', paneCommand = 'node', claudeForeground = true, inPane = false) {
   const t = {
     _sent: [],
     capturePane: async () => paneContent,
     getPaneCommand: async () => paneCommand,
     sendKeys: async (_p, text) => { t._sent.push(text); },
     isClaudeForeground: async () => claudeForeground,
+    isClaudeInPane: async () => inPane,
   };
   return t;
 }
@@ -72,6 +73,23 @@ describe('processOneTick', () => {
     assert.equal(await processOneTick(s, t, '%0', DEFAULT_CONFIG, () => true), 'skipped-not-claude');
     assert.equal(t._sent.length, 0);
     assert.equal(s._lastForeground, 'vim');
+  });
+  it('retries when tty matches the pane despite zsh foreground (fixes tmux -CC)', async () => {
+    // macOS + tmux -CC: '+' flag false AND pane_current_command "zsh", but
+    // the live Claude process is genuinely attached to this pane's tty.
+    const t = mockTmux('5-hour limit reached - resets 3pm (UTC)', 'zsh', false, true);
+    const s = createMonitorState();
+    s.waitUntil = Date.now() - 1000; s.status = 'waiting';
+    assert.equal(await processOneTick(s, t, '%0', DEFAULT_CONFIG, () => true), 'retried');
+    assert.equal(t._sent.length, 1);
+  });
+  it('still skips when not in pane and command unknown (null state)', async () => {
+    const t = mockTmux('5-hour limit reached - resets 3pm (UTC)', 'zsh', null, false);
+    const s = createMonitorState();
+    s.waitUntil = Date.now() - 1000; s.status = 'waiting';
+    assert.equal(await processOneTick(s, t, '%0', DEFAULT_CONFIG, () => true), 'skipped-not-claude');
+    assert.equal(t._sent.length, 0);
+    assert.equal(s._lastForeground, 'zsh');
   });
   it('accepts custom foregroundCommands in fallback path', async () => {
     const t = mockTmux('5-hour limit reached - resets 3pm (UTC)', 'my-claude-wrapper', null);
