@@ -103,6 +103,25 @@ describe('processOneTick', () => {
     assert.equal(await processOneTick(s, t, '%0', DEFAULT_CONFIG, () => true), 'skipped-not-claude');
     assert.equal(t._sent.length, 0);
   });
+  it('adopts a sooner reset while waiting (escapes a too-long wait)', async () => {
+    // Latched a ~24h wait, but the pane now shows a much nearer reset window.
+    const t = mockTmux('5-hour limit reached - resets in 2 hours');
+    const s = createMonitorState();
+    s.status = 'waiting'; s.waitUntil = Date.now() + 24 * 3600_000;
+    const before = s.waitUntil;
+    assert.equal(await processOneTick(s, t, '%0', DEFAULT_CONFIG, () => true), 'waiting');
+    assert.ok(s.waitUntil < before);
+    assert.ok(s.waitUntil <= Date.now() + (2 * 3600 + 120) * 1000); // ~2h + margin
+    assert.equal(t._sent.length, 0);
+  });
+  it('does not lengthen the wait when the parsed reset is further out', async () => {
+    const t = mockTmux('5-hour limit reached - resets in 2 hours');
+    const s = createMonitorState();
+    s.status = 'waiting'; s.waitUntil = Date.now() + 10 * 60_000; // 10 min, sooner than 2h
+    const before = s.waitUntil;
+    assert.equal(await processOneTick(s, t, '%0', DEFAULT_CONFIG, () => true), 'waiting');
+    assert.equal(s.waitUntil, before);
+  });
   it('resets counter when rate limit disappears', async () => {
     const t = mockTmux('Claude is working normally');
     const s = createMonitorState();

@@ -102,7 +102,13 @@ export function calculateWaitMs(parsed, marginSeconds = 60, fallbackHours = 5, n
   }
 
   let diff = getTargetTimestamp(parsed.hour, parsed.minute) - now.getTime();
-  if (diff < 0) diff += 86400_000; // tomorrow
+  // A reset is in the past. Claude always RENDERS the banner with a future
+  // reset, so reading a past time means the banner is stale and the limit has
+  // already cleared — retry now. We deliberately do NOT roll forward 24h: that
+  // assumption strands the monitor asleep for a day when the limit is actually
+  // gone (the observed failure). Worst case retry-now is one wasted nudge that
+  // self-corrects on the next tick; rolling +24h never self-corrects.
+  if (diff < 0) diff = 0;
 
   return diff + marginSeconds * 1000;
 }

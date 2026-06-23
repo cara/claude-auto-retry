@@ -17,6 +17,22 @@ export async function processOneTick(state, tmuxAdapter, pane, config, isAlive) 
   const stripped = stripAnsi(raw);
 
   if (state.status === 'waiting') {
+    // Re-read the current reset on every tick. The displayed reset can change
+    // (a new limit window opens) or the initial parse may have latched a
+    // stale/just-passed time that rolled to tomorrow. Adopt it only if it
+    // points to a sooner moment so we never sleep through the real reset.
+    if (isRateLimited(stripped, config.customPatterns)) {
+      const msg = findRateLimitMessage(stripped, config.customPatterns);
+      const parsed = msg ? parseResetTime(msg) : null;
+      if (parsed) {
+        const sooner = Date.now() + calculateWaitMs(parsed, config.marginSeconds, config.fallbackWaitHours);
+        if (sooner < state.waitUntil - 60_000) {
+          state.waitUntil = sooner;
+          state.lastRateLimitMessage = msg;
+        }
+      }
+    }
+
     if (Date.now() < state.waitUntil) return 'waiting';
     if (!isAlive()) return 'exit';
 

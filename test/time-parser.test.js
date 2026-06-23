@@ -104,11 +104,19 @@ describe('calculateWaitMs', () => {
     const wait = calculateWaitMs({ hour: 16, minute: 50, timezone: 'Asia/Shanghai' }, 0, 5, now);
     assert.equal(wait, 110 * 60 * 1000);
   });
-  it('rolls to tomorrow when reset time already passed today', () => {
-    // 21:00 Asia/Tokyo, reset "8pm (Asia/Tokyo)" → tomorrow, 23h away
-    const now = new Date('2026-04-15T12:00:00Z');
-    const wait = calculateWaitMs({ hour: 20, minute: 0, timezone: 'Asia/Tokyo' }, 0, 5, now);
-    assert.equal(wait, 23 * 3600 * 1000);
+  it('retries now when a just-passed reset is detected (stale banner, limit cleared)', () => {
+    // 09:37 Europe/Berlin (CEST, UTC+2); "resets 9:30am" passed 7 min ago —
+    // detection lag, limit already cleared → retry now (margin only).
+    const now = new Date('2026-06-23T07:37:00Z');
+    const wait = calculateWaitMs({ hour: 9, minute: 30, timezone: 'Europe/Berlin' }, 60, 5, now);
+    assert.equal(wait, 60 * 1000);
+  });
+  it('retries now for a long-passed reset instead of stalling ~24h (stale banner)', () => {
+    // 15:26 Europe/Berlin; "resets 2:30pm" passed ~1h ago. The banner is stale;
+    // the limit has cleared. Must NOT roll to tomorrow (the observed ~24h stall).
+    const now = new Date('2026-06-23T13:26:00Z');
+    const wait = calculateWaitMs({ hour: 14, minute: 30, timezone: 'Europe/Berlin' }, 0, 5, now);
+    assert.equal(wait, 0);
   });
   it('still computes correct wait for timezones behind UTC', () => {
     // 2026-04-15 10:00 in America/New_York (EDT); "resets 2pm" is 4h away
