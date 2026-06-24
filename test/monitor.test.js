@@ -122,6 +122,24 @@ describe('processOneTick', () => {
     assert.equal(await processOneTick(s, t, '%0', DEFAULT_CONFIG, () => true), 'waiting');
     assert.equal(s.waitUntil, before);
   });
+  it('sends resume message when limit cleared on its own before any retry (attempts 0)', async () => {
+    // Waited out the limit; it cleared before we woke and we never nudged.
+    // Claude is idle at the prompt → must send the resume message once.
+    const t = mockTmux('Claude is idle, no limit here');
+    const s = createMonitorState();
+    s.status = 'waiting'; s.waitUntil = Date.now() - 1000; s.attempts = 0;
+    assert.equal(await processOneTick(s, t, '%0', DEFAULT_CONFIG, () => true), 'resumed');
+    assert.equal(t._sent.length, 1);
+    assert.equal(s.attempts, 1);
+  });
+  it('does not resume-send when limit cleared but a retry was already sent (attempts > 0)', async () => {
+    const t = mockTmux('Claude is working normally');
+    const s = createMonitorState();
+    s.status = 'waiting'; s.waitUntil = Date.now() - 1000; s.attempts = 1;
+    assert.equal(await processOneTick(s, t, '%0', DEFAULT_CONFIG, () => true), 'user-continued');
+    assert.equal(t._sent.length, 0);
+    assert.equal(s.attempts, 0);
+  });
   it('resets counter when rate limit disappears', async () => {
     const t = mockTmux('Claude is working normally');
     const s = createMonitorState();

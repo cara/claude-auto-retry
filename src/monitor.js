@@ -36,14 +36,20 @@ export async function processOneTick(state, tmuxAdapter, pane, config, isAlive) 
     if (Date.now() < state.waitUntil) return 'waiting';
     if (!isAlive()) return 'exit';
 
-    // Always check if rate limit cleared FIRST — even when maxRetries
-    // exhausted, the user (or time passing) may have resolved it.
-    if (!isRateLimited(stripped, config.customPatterns)) {
+    const stillLimited = isRateLimited(stripped, config.customPatterns);
+
+    // The limit is gone. If we already nudged this episode (attempts > 0), the
+    // earlier retry — or the user — resumed the session, so just go back to
+    // monitoring. If we never nudged (attempts === 0), the limit cleared on its
+    // own before we woke: Claude stops at the prompt when rate limited and does
+    // NOT auto-resume, so it is sitting idle. Fall through and send the resume
+    // message once so an unattended session continues.
+    if (!stillLimited && state.attempts > 0) {
       state.status = 'monitoring'; state.attempts = 0;
       return 'user-continued';
     }
 
-    if (state.attempts >= config.maxRetries) {
+    if (stillLimited && state.attempts >= config.maxRetries) {
       // Stay in 'waiting' to avoid re-detecting the stale rate limit
       // on the next tick and creating an infinite max-retries loop.
       state.waitUntil = Date.now() + (config.pollIntervalSeconds * 1000 * 12);
@@ -80,7 +86,7 @@ export async function processOneTick(state, tmuxAdapter, pane, config, isAlive) 
     state.attempts++;
     state.waitUntil = Date.now() + 30_000;
     await tmuxAdapter.sendKeys(pane, config.retryMessage);
-    return 'retried';
+    return stillLimited ? 'retried' : 'resumed';
   }
 
   if (isRateLimited(stripped, config.customPatterns)) {
@@ -123,6 +129,7 @@ export async function startMonitor(pane, pid) {
         state.lastRateLimitMessage = null;
       }
       if (result === 'retried') await logger.info(`Sent retry message (attempt ${state.attempts})`);
+      if (result === 'resumed') await logger.info('Rate limit cleared on its own — sent resume message.');
       if (result === 'user-continued') await logger.info('User already continued. Attempt counter reset.');
       if (result === 'max-retries') await logger.warn(`Max retries (${config.maxRetries}) reached. Monitor still active but will not send further retries until rate limit clears.`);
       if (result === 'skipped-not-claude') await logger.warn(`Foreground is "${state._lastForeground}", not Claude. Skipping send-keys. (Add to foregroundCommands in ~/.claude-auto-retry.json if this is wrong)`);
