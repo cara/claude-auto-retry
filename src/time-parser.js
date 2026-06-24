@@ -101,13 +101,21 @@ export function calculateWaitMs(parsed, marginSeconds = 60, fallbackHours = 5, n
     return Math.max(0, target) + marginSeconds * 1000;
   }
 
-  let diff = getTargetTimestamp(parsed.hour, parsed.minute) - now.getTime();
-  // A reset is in the past. Claude always RENDERS the banner with a future
-  // reset, so reading a past time means the banner is stale and the limit has
-  // already cleared — retry now. We deliberately do NOT roll forward 24h: that
-  // assumption strands the monitor asleep for a day when the limit is actually
-  // gone (the observed failure). Worst case retry-now is one wasted nudge that
-  // self-corrects on the next tick; rolling +24h never self-corrects.
+  // A bare clock time (e.g. "12:30am") maps to an occurrence today, yesterday,
+  // or tomorrow. Pick the one NEAREST to now: this rolls an early-morning reset
+  // read late in the evening forward to tomorrow ("12:30am" at 22:13 → +2h, not
+  // today's long-past 00:30), while a reset read shortly after it passed stays
+  // on today ("2:30pm" read at 15:26 → ~now). No magic threshold needed.
+  let target = getTargetTimestamp(parsed.hour, parsed.minute);
+  const DAY = 86400_000;
+  for (const cand of [target - DAY, target + DAY]) {
+    if (Math.abs(cand - now.getTime()) < Math.abs(target - now.getTime())) target = cand;
+  }
+
+  // The nearest occurrence is in the past → the banner is stale and the limit
+  // has cleared (Claude renders the reset in the future), so retry now rather
+  // than sleeping ~24h. self-corrects on the next tick if wrong; +24h doesn't.
+  let diff = target - now.getTime();
   if (diff < 0) diff = 0;
 
   return diff + marginSeconds * 1000;

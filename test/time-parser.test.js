@@ -111,6 +111,13 @@ describe('calculateWaitMs', () => {
     const wait = calculateWaitMs({ hour: 9, minute: 30, timezone: 'Europe/Berlin' }, 60, 5, now);
     assert.equal(wait, 60 * 1000);
   });
+  it('rolls an early-morning reset read in the evening to tomorrow (12:30am @ 22:13)', () => {
+    // 22:13 Europe/Berlin (CEST); "resets 12:30am" means 00:30 TOMORROW (~2h17m
+    // away), NOT today's long-past 00:30. Must wait, not retry immediately.
+    const now = new Date('2026-06-23T20:13:00Z');
+    const wait = calculateWaitMs({ hour: 0, minute: 30, timezone: 'Europe/Berlin' }, 60, 5, now);
+    assert.equal(wait, (2 * 3600 + 17 * 60 + 60) * 1000); // 2h17m + 60s margin
+  });
   it('retries now for a long-passed reset instead of stalling ~24h (stale banner)', () => {
     // 15:26 Europe/Berlin; "resets 2:30pm" passed ~1h ago. The banner is stale;
     // the limit has cleared. Must NOT roll to tomorrow (the observed ~24h stall).
