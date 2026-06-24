@@ -73,15 +73,19 @@ export function isRateLimited(text, customPatterns = []) {
 export function findRateLimitMessage(text, customPatterns = []) {
   const lines = stripAnsi(text).split('\n');
 
-  // Return the "resets" line — that's what parseResetTime needs
+  // Return the "resets" line — that's what parseResetTime needs. Scan for the
+  // LAST match: the captured pane can hold older banners up in the scrollback,
+  // and the bottom-most one is the current limit window.
+  let resetLine = null;
   for (const line of lines) {
-    if (RESET_PATTERNS.some(p => p.test(line))) return line.trim();
+    if (RESET_PATTERNS.some(p => p.test(line))) resetLine = line;
   }
+  if (resetLine !== null) return resetLine.trim();
 
-  // Fallback: any "limit" line
+  // Fallback: the last "limit" line
+  let limitLine = null;
   for (const line of lines) {
-    if (LIMIT_PATTERNS.some(p => p.test(line))) return line.trim();
+    if (LIMIT_PATTERNS.some(p => p.test(line))) limitLine = line;
   }
-
-  return null;
+  return limitLine !== null ? limitLine.trim() : null;
 }

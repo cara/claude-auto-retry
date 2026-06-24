@@ -7,7 +7,11 @@ export const DEFAULT_CONFIG = {
   pollIntervalSeconds: 5,
   marginSeconds: 60,
   fallbackWaitHours: 5,
-  retryMessage: 'Continue where you left off. The previous attempt was rate limited.',
+  // NB: must NOT contain rate-limit trigger words ("rate limit", "limit",
+  // "resets", "try again") — the monitor reads the pane, where this message is
+  // echoed as the submitted prompt, and such words make isRateLimited() match
+  // our own message and fire spurious extra retries. Keep custom messages clean.
+  retryMessage: 'Please continue where you left off — the previous attempt was interrupted before finishing.',
   customPatterns: [],
 };
 

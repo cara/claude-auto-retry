@@ -93,6 +93,18 @@ describe('findRateLimitMessage', () => {
     const text = '5-hour limit reached\nResets at 3pm (UTC)';
     assert.ok(findRateLimitMessage(text).includes('3pm'));
   });
+  it('returns the most recent (bottom-most) resets line when scrollback has several', () => {
+    const text = 'limit · resets 9am\nwork\nwork\nlimit · resets 2:30pm\n❯';
+    assert.equal(findRateLimitMessage(text), 'limit · resets 2:30pm');
+  });
+});
+
+describe('default retry message does not self-trigger detection', () => {
+  it('the default retryMessage echoed in the pane with a stale resets fragment stays false', async () => {
+    const { DEFAULT_CONFIG } = await import('../src/config.js');
+    const pane = ['· resets 3pm', '❯ ' + DEFAULT_CONFIG.retryMessage, '✻ Working...'].join('\n');
+    assert.equal(isRateLimited(pane), false);
+  });
 });
 
 describe('isRateLimited (multi-line TUI renders)', () => {
