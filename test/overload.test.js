@@ -37,6 +37,8 @@ describe('detectOverload', () => {
   it('matches "API Error: 504"', () => assert.equal(detectOverload('API Error: 504 Gateway Timeout', PATS), true));
   it('matches the overloaded_error JSON type', () => assert.equal(detectOverload('API Error: 529 {"type":"error","error":{"type":"overloaded_error"}}', PATS), true));
   it('matches the dedicated API-429 render (no 3-digit code in the slot)', () => assert.equal(detectOverload('API Error: Server is temporarily limiting requests (not your usage limit) · Rate limited', PATS), true));
+  it('matches the connection-closed-mid-response render (no status code)', () => assert.equal(detectOverload('API Error: Connection closed mid-response. The response above may be incomplete.', PATS), true));
+  it('does NOT match "Connection closed mid-response" in prose (no API Error nearby)', () => assert.equal(detectOverload('the "Connection closed mid-response" error means the stream dropped', PATS), false));
   it('tolerates missing space after the colon', () => assert.equal(detectOverload('API Error:529', PATS), true));
   it('is case-insensitive', () => assert.equal(detectOverload('api error: 529 OVERLOADED', PATS), true));
   it('detects through ANSI codes', () => assert.equal(detectOverload('\x1b[31mAPI Error: 529\x1b[0m \x1b[1mOverloaded\x1b[0m', PATS), true));
@@ -256,6 +258,15 @@ describe('processOneTick — overload path', () => {
     assert.equal(r, 'overload-detected');
     assert.equal(s.status, 'overload');
     assert.ok(near(s.overloadWaitUntil - Date.now(), 30_000));
+    assert.equal(t._sent.length, 0);
+  });
+
+  it('enters overload on a connection-closed-mid-response error', async () => {
+    const t = mockTmux('API Error: Connection closed mid-response. The response above may be incomplete.');
+    const s = createMonitorState();
+    const r = await processOneTick(s, t, '%0', cfg(), () => true, NO_JITTER);
+    assert.equal(r, 'overload-detected');
+    assert.equal(s.status, 'overload');
     assert.equal(t._sent.length, 0);
   });
 

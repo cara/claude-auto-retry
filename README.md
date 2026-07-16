@@ -126,6 +126,7 @@ the layout is unreadable.
 | Terminal API error (colon form) | `API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}` |
 | 5xx family | `API Error: 500 / 502 / 503 / 504 …` (including bodyless renders like `503 no healthy upstream`) |
 | API-level 429 | `API Error: Server is temporarily limiting requests (not your usage limit) · Rate limited` |
+| Connection dropped mid-stream | `API Error: Connection closed mid-response. The response above may be incomplete.` |
 
 ### Safeguard false positives — bounded immediate re-send
 
@@ -178,9 +179,10 @@ All fields optional. Invalid values fall back to defaults automatically.
 
 Separate from subscription rate limits, this fork also detects **sustained API
 overload** — Claude Code's own terminal `API Error: <code>` line for the retryable
-set (`429 / 500 / 502 / 503 / 504 / 529`, or an `overloaded_error` JSON body) — and
-retries on an **exponential backoff** instead of waiting for a usage reset. The two
-paths never collide; usage limits always take precedence.
+set (`429 / 500 / 502 / 503 / 504 / 529`, an `overloaded_error` JSON body, or a
+`Connection closed mid-response` stream drop) — and retries on an **exponential
+backoff** instead of waiting for a usage reset. The two paths never collide; usage
+limits always take precedence.
 
 > **Sustained only.** Claude Code already retries transient 5xx/529 internally
 > with its own backoff. This feature fires only when those internal retries are
@@ -209,7 +211,7 @@ Configured under an `overload` block (shown with its defaults):
 {
   "overload": {
     "enabled": true,
-    "patterns": ["API Error:\\s*(429|500|502|503|504|529)\\b", "overloaded_error", "temporarily limiting requests"],
+    "patterns": ["API Error:\\s*(429|500|502|503|504|529)\\b", "overloaded_error", "temporarily limiting requests", "Connection closed mid-response"],
     "backoffSeconds": [30, 60, 120, 240, 300],
     "steadyStateSeconds": 300,
     "jitterPct": 15,

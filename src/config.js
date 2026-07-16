@@ -26,6 +26,12 @@ export const DEFAULT_OVERLOAD = {
     // API-level 429 uses a dedicated render with no 3-digit code in the generic slot:
     //   "API Error: Server is temporarily limiting requests (not your usage limit) · Rate limited"
     'temporarily limiting requests',
+    // Streaming connection dropped mid-response — no status code, distinct render:
+    //   "API Error: Connection closed mid-response. The response above may be incomplete."
+    // Terminal (Claude Code does not auto-retry this), leaves the pane idle with a partial
+    // response, so "Continue where you left off." resumes it. Anchored by the `API Error`
+    // line like the other phrase patterns, so discussing it in prose won't fire.
+    'Connection closed mid-response',
   ],
   backoffSeconds: [30, 60, 120, 240, 300],
   steadyStateSeconds: 300,
